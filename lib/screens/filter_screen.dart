@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../providers/photo_provider.dart';
@@ -18,7 +19,7 @@ class _FilterScreenState extends State<FilterScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<PhotoProvider>().fetchAlbums();
     });
@@ -130,6 +131,42 @@ class _FilterScreenState extends State<FilterScreen>
                         .animate()
                         .fadeIn(duration: 500.ms, delay: 100.ms)
                         .slideY(begin: -0.3, end: 0),
+                    const SizedBox(height: 16),
+                    // Gamification Stats
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Theme.of(context).primaryColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(20),
+                        border: Border.all(
+                          color: Theme.of(
+                            context,
+                          ).primaryColor.withOpacity(0.2),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Icon(
+                            Icons.cleaning_services_rounded,
+                            color: Theme.of(context).primaryColor,
+                            size: 14,
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            "Total Cleaned: ${_formatBytes(provider.totalSavedBytes)}",
+                            style: TextStyle(
+                              color: Theme.of(context).primaryColor,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ).animate().fadeIn(delay: 300.ms).scale(),
                   ],
                 ),
               ),
@@ -165,9 +202,11 @@ class _FilterScreenState extends State<FilterScreen>
                         fontSize: 15,
                         fontWeight: FontWeight.w600,
                       ),
+                      onTap: (_) => HapticFeedback.selectionClick(),
                       tabs: const [
                         Tab(text: "By Date"),
                         Tab(text: "By Album"),
+                        Tab(text: "Duplicates"),
                       ],
                     ),
                   )
@@ -184,6 +223,7 @@ class _FilterScreenState extends State<FilterScreen>
                   children: [
                     _buildDateTab(context, provider),
                     _buildAlbumTab(context, provider),
+                    _buildDuplicatesFilter(context, provider),
                   ],
                 ),
               ),
@@ -228,6 +268,7 @@ class _FilterScreenState extends State<FilterScreen>
           color: Colors.transparent,
           child: InkWell(
             onTap: () {
+              HapticFeedback.lightImpact();
               context.read<PhotoProvider>().setDateFilter(startDate, endDate);
               context.read<PhotoProvider>().setAlbumFilter(null);
               _applyFilterAndNavigate(context);
@@ -314,11 +355,24 @@ class _FilterScreenState extends State<FilterScreen>
     );
   }
 
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = 0;
+    double size = bytes.toDouble();
+    while (size >= 1024 && i < suffixes.length - 1) {
+      size /= 1024;
+      i++;
+    }
+    return "${size.toStringAsFixed(1)} ${suffixes[i]}";
+  }
+
   Widget _buildAlbumCard(BuildContext context, album, int index) {
     return Material(
           color: Colors.transparent,
           child: InkWell(
             onTap: () {
+              HapticFeedback.lightImpact();
               context.read<PhotoProvider>().setAlbumFilter(album);
               context.read<PhotoProvider>().setDateFilter(null, null);
               _applyFilterAndNavigate(context);
@@ -384,5 +438,81 @@ class _FilterScreenState extends State<FilterScreen>
         .animate()
         .fadeIn(duration: 400.ms, delay: (250 + (index * 40)).ms)
         .scale(begin: const Offset(0.9, 0.9), end: const Offset(1, 1));
+  }
+
+  Widget _buildDuplicatesFilter(BuildContext context, PhotoProvider provider) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.burst_mode_rounded,
+            size: 64,
+            color: Colors.white.withOpacity(0.2),
+          ),
+          const SizedBox(height: 24),
+          const Text(
+            "Find Burst Photos",
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            "Scan your library for photos taken within 2 seconds of each other. Keep the best, delete the rest.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withOpacity(0.6),
+              fontSize: 15,
+              height: 1.5,
+            ),
+          ),
+          const SizedBox(height: 32),
+          SizedBox(
+            width: double.infinity,
+            height: 56,
+            child: ElevatedButton(
+              onPressed: () async {
+                HapticFeedback.mediumImpact();
+                await provider.fetchDuplicateAssets();
+                if (context.mounted) {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (context) => const HomeScreen()),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).primaryColor,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+              ),
+              child: provider.isLoading
+                  ? const SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: CircularProgressIndicator(
+                        color: Colors.white,
+                        strokeWidth: 2,
+                      ),
+                    )
+                  : const Text(
+                      "Scan for Duplicates",
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

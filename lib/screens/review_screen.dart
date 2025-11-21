@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -144,6 +145,7 @@ class ReviewScreen extends StatelessWidget {
                                 right: 6,
                                 child: GestureDetector(
                                   onTap: () {
+                                    HapticFeedback.selectionClick();
                                     provider.undoMark(asset.id);
                                   },
                                   child: Container(
@@ -193,6 +195,7 @@ class ReviewScreen extends StatelessWidget {
                       height: 56,
                       child: ElevatedButton(
                         onPressed: () async {
+                          HapticFeedback.heavyImpact();
                           final confirmed = await showDialog<bool>(
                             context: context,
                             builder: (context) => AlertDialog(
@@ -238,9 +241,51 @@ class ReviewScreen extends StatelessWidget {
                           );
 
                           if (confirmed == true) {
-                            await provider.deleteMarkedAssets();
+                            final bytesDeleted = await provider
+                                .deleteMarkedAssets();
                             if (context.mounted) {
-                              Navigator.pop(context);
+                              Navigator.pop(context); // Close Review Screen
+
+                              // Show Success Dialog
+                              if (bytesDeleted > 0) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Row(
+                                      children: [
+                                        const Icon(
+                                          Icons.check_circle,
+                                          color: Colors.white,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              const Text(
+                                                "Trash Emptied!",
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                ),
+                                              ),
+                                              Text(
+                                                "You saved ${_formatBytes(bytesDeleted)}",
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    backgroundColor: Colors.green,
+                                    behavior: SnackBarBehavior.floating,
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                    ),
+                                    margin: const EdgeInsets.all(16),
+                                  ),
+                                );
+                              }
                             }
                           }
                         },
@@ -275,5 +320,17 @@ class ReviewScreen extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  String _formatBytes(int bytes) {
+    if (bytes <= 0) return "0 B";
+    const suffixes = ["B", "KB", "MB", "GB", "TB"];
+    var i = 0;
+    double size = bytes.toDouble();
+    while (size >= 1024 && i < suffixes.length - 1) {
+      size /= 1024;
+      i++;
+    }
+    return "${size.toStringAsFixed(1)} ${suffixes[i]}";
   }
 }

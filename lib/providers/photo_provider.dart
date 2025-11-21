@@ -10,6 +10,25 @@ class PhotoProvider extends ChangeNotifier {
   bool _isLoading = false;
   bool _hasPermission = false;
 
+  // Gamification State
+  int _totalSavedBytes = 0;
+  int get totalSavedBytes => _totalSavedBytes;
+
+  PhotoProvider() {
+    _loadSavedBytes();
+  }
+
+  Future<void> _loadSavedBytes() async {
+    final prefs = await SharedPreferences.getInstance();
+    _totalSavedBytes = prefs.getInt('total_saved_bytes') ?? 0;
+    notifyListeners();
+  }
+
+  Future<void> _saveSavedBytes() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('total_saved_bytes', _totalSavedBytes);
+  }
+
   List<AssetEntity> get assets => _assets;
   List<AssetEntity> get activeAssets =>
       _assets.where((a) => !_idsToDelete.contains(a.id)).toList();
@@ -56,6 +75,7 @@ class PhotoProvider extends ChangeNotifier {
 
   Future<void> fetchAssets() async {
     _isLoading = true;
+    _isDuplicateMode = false;
     notifyListeners();
 
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
@@ -180,24 +200,50 @@ class PhotoProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> deleteMarkedAssets() async {
-    if (_idsToDelete.isEmpty) return;
+  Future<int> deleteMarkedAssets() async {
+    if (_idsToDelete.isEmpty) return 0;
 
     final List<String> ids = _idsToDelete.toList();
+    int bytesDeleted = 0;
+
+    // Calculate size before deletion
+    for (final id in ids) {
+      final asset = _assets.firstWhere(
+        (a) => a.id == id,
+        orElse: () => _assets.first,
+      );
+      final file = await asset.file;
+      if (file != null) {
+        bytesDeleted += await file.length();
+      }
+    }
+
     try {
       final List<String> result = await PhotoManager.editor.deleteWithIds(ids);
 
-      // Remove deleted assets from the local list
-      _assets.removeWhere((asset) => result.contains(asset.id));
-      _idsToDelete.clear();
+      if (result.isNotEmpty) {
+        // Update total saved
+        _totalSavedBytes += bytesDeleted;
+        await _saveSavedBytes();
 
-      _currentIndex = 0;
+        // Remove from local list
+        _assets.removeWhere((asset) => ids.contains(asset.id));
 
-      notifyListeners();
+        // Clear marked list
+        _idsToDelete.clear();
+
+        // Reset index if out of bounds
+        if (_currentIndex >= activeAssets.length) {
+          _currentIndex = activeAssets.isEmpty ? 0 : activeAssets.length - 1;
+        }
+
+        notifyListeners();
+        return bytesDeleted;
+      }
     } catch (e) {
       debugPrint("Error deleting assets: $e");
-      // Handle error
     }
+    return 0;
   }
 
   // Tutorial State
@@ -215,6 +261,58 @@ class PhotoProvider extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('hasSeenTutorial', true);
+  }
+
+  // Duplicate Detection State
+  bool _isDuplicateMode = false;
+  bool get isDuplicateMode => _isDuplicateMode;
+
+  Future<void> fetchDuplicateAssets() async {
+    _isLoading = true;
+    _isDuplicateMode = true;
+    notifyListeners();
+
+    final PermissionState ps = await PhotoManager.requestPermissionExtend();
+    if (ps.isAuth || ps.hasAccess) {
+      _hasPermission = true;
+
+      // Fetch recent photos (limit to 500 for performance in this demo)
+      final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
+        type: RequestType.image,
+      );
+
+      if (paths.isNotEmpty) {
+        final AssetPathEntity recent = paths[0];
+        // Fetch more assets to increase chance of finding duplicates
+        final List<AssetEntity> allAssets = await recent.getAssetListRange(
+          start: 0,
+          end: 2000,
+        );
+
+        List<AssetEntity> bursts = [];
+
+        // Simple Burst Detection: < 2 seconds difference
+        for (int i = 0; i < allAssets.length - 1; i++) {
+          final current = allAssets[i];
+          final next = allAssets[i + 1];
+
+          final diff = current.createDateTime
+              .difference(next.createDateTime)
+              .abs();
+
+          if (diff.inSeconds < 2) {
+            if (!bursts.any((a) => a.id == current.id)) bursts.add(current);
+            if (!bursts.any((a) => a.id == next.id)) bursts.add(next);
+          }
+        }
+
+        _assets = bursts;
+        _currentIndex = 0;
+      }
+    }
+
+    _isLoading = false;
+    notifyListeners();
   }
 
   // Helper to check if an asset is marked

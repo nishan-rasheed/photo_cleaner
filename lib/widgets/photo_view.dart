@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 import '../providers/photo_provider.dart';
@@ -37,6 +38,7 @@ class _PhotoViewState extends State<PhotoView> with TickerProviderStateMixin {
 
   void _onPanStart(DragStartDetails details) {
     _animationController?.stop();
+    HapticFeedback.selectionClick();
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
@@ -50,6 +52,7 @@ class _PhotoViewState extends State<PhotoView> with TickerProviderStateMixin {
 
     // Swipe Up (Delete)
     if (_dragOffset.dy < -100 || velocity.dy < -1000) {
+      HapticFeedback.heavyImpact();
       _animateOffScreen(const Offset(0, -1000), () {
         widget.onMarkForDeletion();
         _resetCard();
@@ -68,6 +71,7 @@ class _PhotoViewState extends State<PhotoView> with TickerProviderStateMixin {
 
       // Check bounds
       if (targetIndex >= 0 && targetIndex < widget.assets.length) {
+        HapticFeedback.mediumImpact();
         final direction = isRightSwipe ? 1 : -1;
         _animateOffScreen(Offset(direction * 1000, 0), () {
           widget.onIndexChanged(targetIndex);
@@ -75,6 +79,7 @@ class _PhotoViewState extends State<PhotoView> with TickerProviderStateMixin {
         });
       } else {
         // Cannot navigate that way, snap back
+        HapticFeedback.lightImpact();
         _animateBackToCenter();
       }
     } else {
