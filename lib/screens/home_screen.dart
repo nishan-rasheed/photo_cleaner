@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/photo_provider.dart';
 import '../widgets/photo_view.dart';
 import '../widgets/thumbnail_bar.dart';
+import '../widgets/tutorial_overlay.dart';
 import 'review_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -16,92 +17,102 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    // Fetch assets after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PhotoProvider>().fetchAssets();
+      context.read<PhotoProvider>().checkTutorialStatus();
     });
   }
 
   @override
   Widget build(BuildContext context) {
+    final provider = context.watch<PhotoProvider>();
+
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Clean Snap'),
-        actions: [
-          Consumer<PhotoProvider>(
-            builder: (context, provider, child) {
-              return IconButton(
-                icon: Badge(
-                  label: Text('${provider.idsToDelete.length}'),
-                  isLabelVisible: provider.idsToDelete.isNotEmpty,
-                  child: const Icon(Icons.delete_outline),
-                ),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const ReviewScreen(),
-                    ),
-                  );
-                },
-              );
-            },
-          ),
-        ],
-      ),
-      body: Consumer<PhotoProvider>(
-        builder: (context, provider, child) {
-          if (provider.isLoading) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          if (!provider.hasPermission) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Text('Permission required to access photos'),
-                  const SizedBox(height: 16),
-                  ElevatedButton(
-                    onPressed: () => provider.fetchAssets(),
-                    child: const Text('Grant Permission'),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          if (provider.activeAssets.isEmpty) {
-            return const Center(child: Text('No photos found'));
-          }
-
-          return Column(
+      backgroundColor: Colors.black,
+      body: Stack(
+        children: [
+          Column(
             children: [
-              Expanded(
-                child: PhotoView(
-                  assets: provider.activeAssets,
-                  currentIndex: provider.currentIndex,
-                  onIndexChanged: (index) {
-                    provider.setCurrentIndex(index);
-                  },
-                  onMarkForDeletion: () {
-                    final asset = provider.activeAssets[provider.currentIndex];
-                    provider.markForDeletion(asset);
-                  },
+              // Top Bar (Back button & Title)
+              SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_ios_new_rounded,
+                          color: Colors.white,
+                        ),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                      Text(
+                        "${provider.currentIndex + 1} / ${provider.activeAssets.length}",
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(
+                          Icons.delete_sweep_rounded,
+                          color: Colors.white,
+                        ),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (context) => const ReviewScreen(),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
                 ),
               ),
+
+              // Main Photo View
+              Expanded(
+                child: provider.activeAssets.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : PhotoView(
+                        assets: provider.activeAssets,
+                        currentIndex: provider.currentIndex,
+                        onIndexChanged: (index) =>
+                            provider.setCurrentIndex(index),
+                        onMarkForDeletion: () {
+                          final asset =
+                              provider.activeAssets[provider.currentIndex];
+                          provider.markForDeletion(asset);
+                        },
+                      ),
+              ),
+
+              // Thumbnail Bar
               const SizedBox(height: 16),
               ThumbnailBar(
                 assets: provider.activeAssets,
                 currentIndex: provider.currentIndex,
-                onTap: (index) {
-                  provider.setCurrentIndex(index);
-                },
+                onTap: (index) => provider.setCurrentIndex(index),
               ),
               const SizedBox(height: 16),
             ],
-          );
-        },
+          ),
+
+          // Tutorial Overlay
+          if (provider.showTutorial)
+            TutorialOverlay(
+              onDismiss: () {
+                provider.completeTutorial();
+              },
+            ),
+        ],
       ),
     );
   }

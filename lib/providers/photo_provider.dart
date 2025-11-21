@@ -1,6 +1,7 @@
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class PhotoProvider extends ChangeNotifier {
   List<AssetEntity> _assets = [];
@@ -23,33 +24,89 @@ class PhotoProvider extends ChangeNotifier {
       ? activeAssets[_currentIndex]
       : null;
 
+  List<AssetPathEntity> _albums = [];
+  AssetPathEntity? _selectedAlbum;
+  DateTime? _startDate;
+  DateTime? _endDate;
+
+  List<AssetPathEntity> get albums => _albums;
+  AssetPathEntity? get selectedAlbum => _selectedAlbum;
+
+  Future<void> fetchAlbums() async {
+    final PermissionState ps = await PhotoManager.requestPermissionExtend();
+    if (ps.isAuth || ps.hasAccess) {
+      _hasPermission = true;
+      _albums = await PhotoManager.getAssetPathList(type: RequestType.image);
+      notifyListeners();
+    } else {
+      _hasPermission = false;
+    }
+  }
+
+  void setDateFilter(DateTime? start, DateTime? end) {
+    _startDate = start;
+    _endDate = end;
+    notifyListeners();
+  }
+
+  void setAlbumFilter(AssetPathEntity? album) {
+    _selectedAlbum = album;
+    notifyListeners();
+  }
+
   Future<void> fetchAssets() async {
     _isLoading = true;
     notifyListeners();
 
     final PermissionState ps = await PhotoManager.requestPermissionExtend();
-    // isAuth returns true for authorized and limited (iOS)
     if (ps.isAuth || ps.hasAccess) {
       _hasPermission = true;
-      // Fetch all photos, sorted by latest first
+
+      // 1. Construct Filter
+      final FilterOptionGroup filter = FilterOptionGroup(
+        orders: [
+          const OrderOption(type: OrderOptionType.createDate, asc: false),
+        ],
+      );
+
+      if (_startDate != null && _endDate != null) {
+        filter.createTimeCond = DateTimeCond(min: _startDate!, max: _endDate!);
+      }
+
+      // 2. Fetch Paths (Albums) with Filter
       final List<AssetPathEntity> paths = await PhotoManager.getAssetPathList(
         type: RequestType.image,
+        filterOption: filter,
       );
 
       if (paths.isNotEmpty) {
-        // Usually the first path is "Recent" or "All"
-        final List<AssetEntity> entities = await paths[0].getAssetListRange(
+        // 3. Determine Target Album
+        AssetPathEntity targetPath = paths[0]; // Default to Recent
+
+        if (_selectedAlbum != null) {
+          // Try to find selected album in the new list
+          try {
+            targetPath = paths.firstWhere((p) => p.id == _selectedAlbum!.id);
+          } catch (_) {
+            // Fallback to Recent
+            targetPath = paths[0];
+          }
+        }
+
+        // 4. Fetch Assets
+        final List<AssetEntity> entities = await targetPath.getAssetListRange(
           start: 0,
-          end:
-              10000, // Fetch a reasonable amount, or implement pagination later
+          end: 10000,
         );
         _assets = entities;
+        _currentIndex = 0; // Reset index to avoid RangeError
+      } else {
+        _assets = [];
+        _currentIndex = 0;
       }
     } else {
       _hasPermission = false;
-      // Only open settings if strictly denied, but for now let's just log
       debugPrint("Permission denied: $ps");
-      // await openAppSettings(); // Optional: don't force open settings immediately loop
     }
 
     _isLoading = false;
@@ -141,6 +198,23 @@ class PhotoProvider extends ChangeNotifier {
       debugPrint("Error deleting assets: $e");
       // Handle error
     }
+  }
+
+  // Tutorial State
+  bool _showTutorial = false;
+  bool get showTutorial => _showTutorial;
+
+  Future<void> checkTutorialStatus() async {
+    final prefs = await SharedPreferences.getInstance();
+    _showTutorial = !(prefs.getBool('hasSeenTutorial') ?? false);
+    notifyListeners();
+  }
+
+  Future<void> completeTutorial() async {
+    _showTutorial = false;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('hasSeenTutorial', true);
   }
 
   // Helper to check if an asset is marked

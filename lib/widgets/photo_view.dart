@@ -1,8 +1,10 @@
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:provider/provider.dart';
 import '../providers/photo_provider.dart';
+import 'photo_details_sheet.dart';
 
 class PhotoView extends StatefulWidget {
   final List<AssetEntity> assets;
@@ -215,6 +217,153 @@ class _PhotoViewState extends State<PhotoView> with TickerProviderStateMixin {
         fit: StackFit.expand,
         children: [
           _CachedAssetImage(asset: asset),
+
+          // Metadata Overlay (Only for interactive card)
+          if (isInteractive)
+            Positioned(
+              bottom: 0,
+              left: 0,
+              right: 0,
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(20, 60, 20, 20),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.8),
+                    ],
+                  ),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          FutureBuilder<List<dynamic>>(
+                            future: Future.wait([
+                              asset.file,
+                              asset.mimeTypeAsync,
+                            ]),
+                            builder: (context, snapshot) {
+                              String sizeText = "Loading...";
+                              String typeText = "IMG";
+
+                              if (snapshot.hasData && snapshot.data != null) {
+                                // File Size
+                                final File? file = snapshot.data![0] as File?;
+                                if (file != null) {
+                                  final sizeInBytes = file.lengthSync();
+                                  if (sizeInBytes < 1024 * 1024) {
+                                    sizeText =
+                                        "${(sizeInBytes / 1024).toStringAsFixed(0)} KB";
+                                  } else {
+                                    sizeText =
+                                        "${(sizeInBytes / (1024 * 1024)).toStringAsFixed(1)} MB";
+                                  }
+                                }
+
+                                // Mime Type
+                                final String? mimeType =
+                                    snapshot.data![1] as String?;
+                                if (mimeType != null) {
+                                  // e.g. "image/jpeg" -> "JPG"
+                                  typeText = mimeType
+                                      .split('/')
+                                      .last
+                                      .toUpperCase();
+                                  if (typeText == "JPEG") typeText = "JPG";
+                                } else {
+                                  // Fallback to title extension
+                                  final ext = asset.title
+                                      ?.split('.')
+                                      .last
+                                      .toUpperCase();
+                                  if (ext != null &&
+                                      ext.isNotEmpty &&
+                                      ext.length < 5) {
+                                    typeText = ext;
+                                  }
+                                }
+                              }
+
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    sizeText,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.2,
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      typeText,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: () {
+                          showModalBottomSheet(
+                            context: context,
+                            backgroundColor: Colors.transparent,
+                            builder: (context) =>
+                                PhotoDetailsSheet(asset: asset),
+                          );
+                        },
+                        borderRadius: BorderRadius.circular(20),
+                        child: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.1),
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.2),
+                            ),
+                          ),
+                          child: const Icon(
+                            Icons.info_outline_rounded,
+                            color: Colors.white,
+                            size: 24,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+
           if (isInteractive) _buildOverlay(),
         ],
       ),
