@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 import '../providers/photo_provider.dart';
 import '../widgets/photo_view.dart';
@@ -58,20 +59,41 @@ class _HomeScreenState extends State<HomeScreen> {
                           fontWeight: FontWeight.bold,
                         ),
                       ),
-                      IconButton(
-                        icon: const Icon(
-                          Icons.delete_sweep_rounded,
-                          color: Colors.white,
-                        ),
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const ReviewScreen(),
+                      Badge(
+                            isLabelVisible: provider.idsToDelete.isNotEmpty,
+                            offset: const Offset(-4, 4),
+                            label: Text(
+                              '${provider.idsToDelete.length}',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                              ),
                             ),
-                          );
-                        },
-                      ),
+                            backgroundColor: Colors.redAccent,
+                            child: IconButton(
+                              icon: const Icon(
+                                Icons.delete_sweep_rounded,
+                                color: Colors.white,
+                              ),
+                              onPressed: () {
+                                Navigator.push(
+                                  context,
+                                  MaterialPageRoute(
+                                    builder: (context) => const ReviewScreen(),
+                                  ),
+                                );
+                              },
+                            ),
+                          )
+                          .animate(
+                            target: provider.idsToDelete.isNotEmpty ? 1 : 0,
+                          )
+                          .scale(
+                            begin: const Offset(0.8, 0.8),
+                            end: const Offset(1, 1),
+                            curve: Curves.elasticOut,
+                            duration: 300.ms,
+                          ),
                     ],
                   ),
                 ),
@@ -79,8 +101,40 @@ class _HomeScreenState extends State<HomeScreen> {
 
               // Main Photo View
               Expanded(
-                child: provider.activeAssets.isEmpty
-                    ? const Center(child: CircularProgressIndicator())
+                child: provider.isLoading
+                    ? const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      )
+                    : provider.activeAssets.isEmpty
+                    ? Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.photo_library_outlined,
+                              size: 80,
+                              color: Colors.white.withOpacity(0.3),
+                            ),
+                            const SizedBox(height: 24),
+                            Text(
+                              "No Photos Found",
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.7),
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              "Try selecting a different filter",
+                              style: TextStyle(
+                                color: Colors.white.withOpacity(0.5),
+                                fontSize: 16,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
                     : PhotoView(
                         assets: provider.activeAssets,
                         currentIndex: provider.currentIndex,
